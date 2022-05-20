@@ -1,13 +1,17 @@
 #pragma once
 
 #include <Luna/Core/App.hpp>
+#include <Luna/Graphics/Vulkan/Common.hpp>
+#include <Luna/Utility/Time.hpp>
 #include <glm/glm.hpp>
+
+class Tracer;
 
 class Rake : public Luna::App {
  public:
 	Rake();
 	Rake(const Rake&) = delete;
-	~Rake() noexcept  = default;
+	~Rake() noexcept;
 
 	Rake& operator=(const Rake&) = delete;
 
@@ -16,10 +20,21 @@ class Rake : public Luna::App {
 	virtual void Update() override;
 
  private:
-	void BeginDockspace() const;
 	void Render();
+	void RequestCancel();
+	void RequestTrace();
+
 	void RenderRakeUI();
+	void RenderDockspace();
+	void RenderControls();
 	void RenderViewport();
 
+	Luna::Vulkan::ImageHandle _renderImage;
+	Luna::Utility::Stopwatch _renderTime;
+	std::unique_ptr<Tracer> _tracer;
 	glm::uvec2 _viewportSize = glm::uvec2(800, 600);
+
+	uint64_t _raysCompleted        = 0;
+	unsigned int _samplesCompleted = 0;
+	unsigned int _samplesPerPixel  = 100;
 };

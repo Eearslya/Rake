@@ -3,30 +3,141 @@
 #include <Luna.hpp>
 #include <Luna/Graphics/Vulkan/CommandBuffer.hpp>
 #include <Luna/Graphics/Vulkan/Device.hpp>
+#include <Luna/Graphics/Vulkan/Image.hpp>
+#include <Luna/Utility/Log.hpp>
+#include <Luna/Utility/Time.hpp>
+
+#include "RenderMessages.hpp"
+#include "Tracer.hpp"
 
 using namespace Luna;
 
 Rake::Rake() : App("Rake") {}
+
+Rake::~Rake() noexcept = default;
 
 void Rake::Start() {
 	Window::Get()->OnClosed += []() { Engine::Get()->Shutdown(); };
 	Window::Get()->Maximize();
 	Window::Get()->SetTitle("Rake");
 
+	_tracer = std::make_unique<Tracer>();
+
 	Graphics::Get()->OnRender += [this]() { Render(); };
 }
 
-void Rake::Update() {}
+void Rake::Update() {
+	_renderTime.Update();
+}
 
-void Rake::Stop() {}
+void Rake::Stop() {
+	_tracer.reset();
+	_renderImage.Reset();
+}
 
-void Rake::BeginDockspace() const {
-	auto ui           = UIManager::Get();
+void Rake::Render() {
+	auto& device = Graphics::Get()->GetDevice();
+
+	auto cmdBuf = device.RequestCommandBuffer(Vulkan::CommandBufferType::Generic, "Main Command Buffer");
+
+	if (_tracer->Results.front()) {
+		RenderResult result = std::move(*_tracer->Results.front());
+		_tracer->Results.pop();
+
+		_raysCompleted    = result.Raycasts;
+		_samplesCompleted = result.SampleCount;
+		if (result.RenderComplete) { _renderTime.Stop(); }
+
+		for (auto& pixel : result.Pixels) { pixel /= result.SampleCount; }
+
+		const Vulkan::ImageCreateInfo imageCI = Vulkan::ImageCreateInfo::Immutable2D(
+			vk::Format::eR32G32B32Sfloat, vk::Extent2D(result.ImageSize.x, result.ImageSize.y), false);
+		const Vulkan::InitialImageData initial{.Data = result.Pixels.data(), .RowLength = 0, .ImageHeight = 0};
+		_renderImage = device.CreateImage(imageCI, &initial);
+	}
+
+	UIManager::Get()->BeginFrame();
+	RenderRakeUI();
+	UIManager::Get()->Render(cmdBuf);
+	UIManager::Get()->EndFrame();
+
+	device.Submit(cmdBuf);
+}
+
+void Rake::RequestCancel() {
+	RenderCancel cancel;
+	const bool cancelled = _tracer->Cancels.try_push(cancel);
+	_renderTime.Stop();
+}
+
+void Rake::RequestTrace() {
+	RenderRequest request{.ImageSize = _viewportSize, .SampleCount = _samplesPerPixel};
+	const bool requested = _tracer->Requests.try_push(request);
+	if (requested) { _renderTime.Start(); }
+}
+
+void Rake::RenderRakeUI() {
+	RenderControls();
+	RenderDockspace();
+	RenderViewport();
+}
+
+void Rake::RenderControls() {
+	ImGuiViewport* viewport  = ImGui::GetMainViewport();
+	const bool tracerRunning = _tracer->IsRunning();
+
+	ImGui::SetNextWindowPos(viewport->Pos);
+	ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, 64.0f));
+	if (ImGui::Begin("Controls##Controls",
+	                 nullptr,
+	                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+	                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoDocking)) {
+		if (tracerRunning) {
+			ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(64, 32, 32, 255));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(192, 64, 64, 255));
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(255, 64, 64, 255));
+			if (ImGui::ButtonEx("Cancel", ImVec2(48.0f, 48.0f))) { RequestCancel(); }
+			ImGui::PopStyleColor(3);
+		} else {
+			if (ImGui::ButtonEx("Start", ImVec2(48.0f, 48.0f))) { RequestTrace(); }
+		}
+
+		ImGui::SameLine();
+		ImGui::BeginGroup();
+		{
+			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0, 0.0));
+
+			const auto renderTime        = _renderTime.Get();
+			const auto renderTimeSeconds = renderTime.AsSeconds<float>();
+			std::string renderTimeStr;
+			if (renderTimeSeconds > 10.0f) {
+				renderTimeStr = fmt::format("Render Time: {:.1f}s", renderTimeSeconds);
+			} else {
+				renderTimeStr = fmt::format("Render Time: {:.2f}ms", renderTime.AsMilliseconds<float>());
+			}
+			ImGui::Text("%s", renderTimeStr.c_str());
+
+			const std::string progressStr = fmt::format("Progress: {} / {}", _samplesCompleted, _samplesPerPixel);
+			ImGui::Text("%s", progressStr.c_str());
+
+			const uint64_t raysPerSecond =
+				renderTimeSeconds > 0.0f ? std::floor(float(_raysCompleted) / renderTimeSeconds) : 0ull;
+			const std::string rpsStr = fmt::format(std::locale("en_US.UTF-8"), "RPS: {:L}", raysPerSecond);
+			ImGui::Text("%s", rpsStr.c_str());
+
+			ImGui::PopStyleVar();
+		}
+		ImGui::EndGroup();
+	}
+	ImGui::End();
+}
+
+void Rake::RenderDockspace() {
 	ImGuiStyle& style = ImGui::GetStyle();
 
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
-	ImGui::SetNextWindowPos(viewport->Pos);
-	ImGui::SetNextWindowSize(viewport->Size);
+	ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x, viewport->Pos.y + 64.0f));
+	ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, viewport->Size.y - 64.0f));
 	ImGui::SetNextWindowViewport(viewport->ID);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 3.0f);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(1.0f, 1.0f));
@@ -46,32 +157,18 @@ void Rake::BeginDockspace() const {
 	ImGui::PopStyleVar();
 }
 
-void Rake::Render() {
-	auto& device = Graphics::Get()->GetDevice();
-
-	auto cmdBuf = device.RequestCommandBuffer(Vulkan::CommandBufferType::Generic, "Main Command Buffer");
-
-	UIManager::Get()->BeginFrame();
-	RenderRakeUI();
-	UIManager::Get()->Render(cmdBuf);
-	UIManager::Get()->EndFrame();
-
-	device.Submit(cmdBuf);
-}
-
-void Rake::RenderRakeUI() {
-	BeginDockspace();
-	RenderViewport();
-}
-
 void Rake::RenderViewport() {
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-	ImGui::SetNextWindowSize(ImVec2(_viewportSize.x, _viewportSize.y), ImGuiCond_FirstUseEver);
-	const bool draw = ImGui::Begin("Render Result##Viewport");
+	const std::string title = fmt::format("Render Result ({}x{})###Viewport", _viewportSize.x, _viewportSize.y);
+	const bool draw         = ImGui::Begin(title.c_str());
 	ImGui::PopStyleVar();
 	if (draw) {
 		const auto viewportSize = ImGui::GetContentRegionAvail();
 		_viewportSize           = glm::uvec2(viewportSize.x, viewportSize.y);
+		if (_renderImage) {
+			ImGui::Image(reinterpret_cast<ImTextureID>(const_cast<Luna::Vulkan::ImageView*>(_renderImage->GetView().Get())),
+			             viewportSize);
+		}
 	}
 	ImGui::End();
 }

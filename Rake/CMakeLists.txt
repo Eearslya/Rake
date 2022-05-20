@@ -15,7 +15,8 @@ target_link_libraries(Rake PRIVATE Luna SPSCQueue stb TracyClient)
 
 target_sources(Rake PRIVATE
 	Main.cpp
-	Rake.cpp)
+	Rake.cpp
+	Tracer.cpp)
 
 add_custom_target(Run
 	COMMAND Rake

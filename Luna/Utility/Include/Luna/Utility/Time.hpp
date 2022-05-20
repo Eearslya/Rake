@@ -149,6 +149,12 @@ class ElapsedTime {
 		return _delta;
 	}
 
+	void Reset() {
+		_startTime = Time::Now();
+		_delta     = Time();
+		_lastTime  = _startTime;
+	}
+
 	void Update() {
 		_startTime = Time::Now();
 		_delta     = _startTime - _lastTime;
@@ -194,6 +200,36 @@ class IntervalCounter {
 	Time _interval;
 	Time _startTime;
 	uint32_t _value = 0;
+};
+
+class Stopwatch {
+ public:
+	const Time& Get() const {
+		return _elapsed;
+	}
+
+	void Start() {
+		_startTime = Time::Now();
+		_elapsed   = Time();
+		_running   = true;
+	}
+
+	void Stop() {
+		Update();
+		_running = false;
+	}
+
+	void Update() {
+		if (_running) {
+			const auto now = Time::Now();
+			_elapsed       = now - _startTime;
+		}
+	}
+
+ private:
+	bool _running = false;
+	Time _startTime;
+	Time _elapsed;
 };
 
 class UpdatesPerSecond {
