@@ -8,7 +8,9 @@
 #include <Luna/Utility/Time.hpp>
 
 #include "RenderMessages.hpp"
+#include "Sphere.hpp"
 #include "Tracer.hpp"
+#include "World.hpp"
 
 using namespace Luna;
 
@@ -24,6 +26,20 @@ void Rake::Start() {
 	_tracer = std::make_unique<Tracer>();
 
 	Graphics::Get()->OnRender += [this]() { Render(); };
+
+	const auto CreateWorld = [this](const std::string& name) -> World& {
+		auto& world = _worlds.emplace_back(std::make_shared<World>(name));
+		return *world;
+	};
+
+	{
+		auto& world               = CreateWorld("World");
+		world.CameraPos           = Point3(0.0, 0.0, 0.0);
+		world.CameraTarget        = Point3(0.0, 0.0, -1.0);
+		world.CameraFocusDistance = 1.0;
+		world.Objects.Add<Sphere>(Point3(0, 0, -1), 0.5);
+		world.Objects.Add<Sphere>(Point3(0, -100.5, -1), 100);
+	}
 }
 
 void Rake::Update() {
@@ -48,7 +64,12 @@ void Rake::Render() {
 		_samplesCompleted = result.SampleCount;
 		if (result.RenderComplete) { _renderTime.Stop(); }
 
-		for (auto& pixel : result.Pixels) { pixel /= result.SampleCount; }
+		const auto scale = 1.0 / result.SampleCount;
+		for (auto& pixel : result.Pixels) {
+			pixel.r = glm::sqrt(scale * pixel.r);
+			pixel.g = glm::sqrt(scale * pixel.g);
+			pixel.b = glm::sqrt(scale * pixel.b);
+		}
 
 		const Vulkan::ImageCreateInfo imageCI = Vulkan::ImageCreateInfo::Immutable2D(
 			vk::Format::eR32G32B32Sfloat, vk::Extent2D(result.ImageSize.x, result.ImageSize.y), false);
@@ -71,7 +92,7 @@ void Rake::RequestCancel() {
 }
 
 void Rake::RequestTrace() {
-	RenderRequest request{.ImageSize = _viewportSize, .SampleCount = _samplesPerPixel};
+	RenderRequest request{.ImageSize = _viewportSize, .SampleCount = _samplesPerPixel, .World = _worlds[_currentWorld]};
 	const bool requested = _tracer->Requests.try_push(request);
 	if (requested) {
 		_renderTime.Start();
@@ -149,10 +170,10 @@ void Rake::RenderControls() {
 			{
 				ImGui::SetNextItemWidth(48.0f);
 				ImGui::InputScalar("###SamplesPerPixel", ImGuiDataType_U32, &_samplesPerPixel, nullptr, nullptr, "%lu");
-				const auto labelSize = ImGui::CalcTextSize("SPS");
+				const auto labelSize = ImGui::CalcTextSize("SPP");
 				const auto padding   = (48.0f - labelSize.x) / 2.0f;
 				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + padding);
-				ImGui::Text("SPS");
+				ImGui::Text("SPP");
 			}
 			ImGui::EndGroup();
 

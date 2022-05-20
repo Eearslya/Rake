@@ -4,8 +4,11 @@
 #include <Luna/Graphics/Vulkan/Common.hpp>
 #include <Luna/Utility/Time.hpp>
 #include <glm/glm.hpp>
+#include <memory>
+#include <vector>
 
 class Tracer;
+class World;
 
 class Rake : public Luna::App {
  public:
@@ -33,6 +36,9 @@ class Rake : public Luna::App {
 	Luna::Utility::Stopwatch _renderTime;
 	std::unique_ptr<Tracer> _tracer;
 	glm::uvec2 _viewportSize = glm::uvec2(800, 600);
+
+	unsigned int _currentWorld = 0;
+	std::vector<std::shared_ptr<World>> _worlds;
 
 	unsigned int _samplesPerPixel = 100;
 

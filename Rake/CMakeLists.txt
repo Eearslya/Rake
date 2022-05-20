@@ -14,8 +14,11 @@ target_compile_definitions(Rake PRIVATE TRACY_ENABLE)
 target_link_libraries(Rake PRIVATE Luna SPSCQueue stb TracyClient)
 
 target_sources(Rake PRIVATE
+	Camera.cpp
+	HittableList.cpp
 	Main.cpp
 	Rake.cpp
+	Sphere.cpp
 	Tracer.cpp)
 
 add_custom_target(Run

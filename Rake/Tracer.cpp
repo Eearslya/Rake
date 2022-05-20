@@ -2,10 +2,23 @@
 
 #include <Luna/Utility/Log.hpp>
 
+#include "Random.hpp"
+#include "World.hpp"
+
 using Luna::Log;
 
 RenderContext::RenderContext(const RenderRequest& request)
-		: CurrentSample(0), Raycasts(0), Request(request), SampleCount(request.SampleCount) {
+		: Cam(request.World->CameraPos,
+          request.World->CameraTarget,
+          request.World->VerticalFOV,
+          double(request.ImageSize.x) / double(request.ImageSize.y),
+          request.World->CameraAperture,
+          request.World->CameraFocusDistance),
+			CurrentSample(0),
+			Raycasts(0),
+			Request(request),
+			SampleCount(request.SampleCount),
+			World(request.World) {
 	Pixels.resize(request.ImageSize.x * request.ImageSize.y);
 	std::fill(Pixels.begin(), Pixels.end(), Color(0.0));
 }
@@ -83,17 +96,20 @@ void Tracer::WorkRequest() {
 
 	auto& pixels        = _activeContext->Pixels;
 	auto& raycasts      = _activeContext->Raycasts;
+	const auto& camera  = _activeContext->Cam;
 	const auto& request = _activeContext->Request;
+	const auto& world   = *request.World;
 	const auto width    = request.ImageSize.x;
 	const auto height   = request.ImageSize.y;
 
 	for (uint32_t y = 0; y < height; ++y) {
 		for (uint32_t x = 0; x < width; ++x) {
-			const float r = float(x) / (width - 1);
-			const float g = float(y) / (height - 1);
+			const auto s         = (double(x) + RandomDouble()) / (width - 1);
+			const auto t         = 1.0 - ((double(y) + RandomDouble()) / (height - 1));
+			const Ray ray        = camera.GetRay(s, t);
+			const Color rayColor = CastRay(ray, world, raycasts, 0);
 
-			pixels[(y * request.ImageSize.x) + x] += Color(r, g, 0.25f);
-			++raycasts;
+			pixels[(y * request.ImageSize.x) + x] += rayColor;
 		}
 	}
 
@@ -102,4 +118,17 @@ void Tracer::WorkRequest() {
 	SendRenderResult();
 
 	if (_activeContext->CurrentSample >= _activeContext->SampleCount) { _activeContext.reset(); }
+}
+
+Color Tracer::CastRay(const Ray& ray, const World& world, uint64_t& raycasts, uint32_t depth) {
+	if (depth >= MaxDepth) { return Color(0.0); }
+	++raycasts;
+
+	HitRecord hit;
+	if (world.Objects.Hit(ray, 0.001, Infinity, hit)) {
+		const Point3 target = hit.Point + RandomInHemisphere(hit.Normal);
+		return 0.5f * CastRay(Ray(hit.Point, glm::normalize(target - hit.Point)), world, raycasts, depth + 1);
+	} else {
+		return world.Sky;
+	}
 }
