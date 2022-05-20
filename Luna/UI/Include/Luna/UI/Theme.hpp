@@ -14,8 +14,8 @@ struct Theme {
 	ImColor GroupHeader        = IM_COL32(47, 47, 47, 255);
 	ImColor GroupHeaderHover   = IM_COL32(67, 67, 67, 255);
 	ImColor Highlight          = IM_COL32(39, 185, 242, 255);
-	ImColor PropertyField      = IM_COL32(15, 15, 15, 255);
-	ImColor PropertyFieldHover = IM_COL32(25, 25, 25, 255);
+	ImColor PropertyField      = IM_COL32(56, 56, 56, 255);
+	ImColor PropertyFieldHover = IM_COL32(84, 84, 84, 255);
 	ImColor TabActive          = IM_COL32(156, 21, 218, 100);
 	ImColor TabHover           = IM_COL32(156, 21, 218, 140);
 	ImColor Titlebar           = IM_COL32(21, 21, 21, 255);

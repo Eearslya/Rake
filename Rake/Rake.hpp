@@ -34,7 +34,9 @@ class Rake : public Luna::App {
 	std::unique_ptr<Tracer> _tracer;
 	glm::uvec2 _viewportSize = glm::uvec2(800, 600);
 
+	unsigned int _samplesPerPixel = 100;
+
 	uint64_t _raysCompleted        = 0;
 	unsigned int _samplesCompleted = 0;
-	unsigned int _samplesPerPixel  = 100;
+	unsigned int _samplesRequested = 0;
 };

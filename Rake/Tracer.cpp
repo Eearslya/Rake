@@ -84,10 +84,15 @@ void Tracer::WorkRequest() {
 	auto& pixels        = _activeContext->Pixels;
 	auto& raycasts      = _activeContext->Raycasts;
 	const auto& request = _activeContext->Request;
+	const auto width    = request.ImageSize.x;
+	const auto height   = request.ImageSize.y;
 
-	for (uint32_t y = 0; y < request.ImageSize.y; ++y) {
-		for (uint32_t x = 0; x < request.ImageSize.x; ++x) {
-			pixels[(y * request.ImageSize.x) + x] += Color(1.0, 0.0, 0.0);
+	for (uint32_t y = 0; y < height; ++y) {
+		for (uint32_t x = 0; x < width; ++x) {
+			const float r = float(x) / (width - 1);
+			const float g = float(y) / (height - 1);
+
+			pixels[(y * request.ImageSize.x) + x] += Color(r, g, 0.25f);
 			++raycasts;
 		}
 	}

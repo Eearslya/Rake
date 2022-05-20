@@ -73,13 +73,17 @@ void Rake::RequestCancel() {
 void Rake::RequestTrace() {
 	RenderRequest request{.ImageSize = _viewportSize, .SampleCount = _samplesPerPixel};
 	const bool requested = _tracer->Requests.try_push(request);
-	if (requested) { _renderTime.Start(); }
+	if (requested) {
+		_renderTime.Start();
+		_samplesRequested = request.SampleCount;
+	}
 }
 
 void Rake::RenderRakeUI() {
 	RenderControls();
 	RenderDockspace();
 	RenderViewport();
+	ImGui::ShowDemoWindow();
 }
 
 void Rake::RenderControls() {
@@ -92,42 +96,68 @@ void Rake::RenderControls() {
 	                 nullptr,
 	                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
 	                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoDocking)) {
-		if (tracerRunning) {
-			ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(64, 32, 32, 255));
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(192, 64, 64, 255));
-			ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(255, 64, 64, 255));
-			if (ImGui::ButtonEx("Cancel", ImVec2(48.0f, 48.0f))) { RequestCancel(); }
-			ImGui::PopStyleColor(3);
-		} else {
-			if (ImGui::ButtonEx("Start", ImVec2(48.0f, 48.0f))) { RequestTrace(); }
-		}
+		if (ImGui::BeginTable("ControlsTable", 3, ImGuiTableFlags_BordersInnerV)) {
+			ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 48.0f);
+			ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 160.0f);
+			ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 0.0f);
+			ImGui::TableNextRow();
 
-		ImGui::SameLine();
-		ImGui::BeginGroup();
-		{
-			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0, 0.0));
-
-			const auto renderTime        = _renderTime.Get();
-			const auto renderTimeSeconds = renderTime.AsSeconds<float>();
-			std::string renderTimeStr;
-			if (renderTimeSeconds > 10.0f) {
-				renderTimeStr = fmt::format("Render Time: {:.1f}s", renderTimeSeconds);
-			} else {
-				renderTimeStr = fmt::format("Render Time: {:.2f}ms", renderTime.AsMilliseconds<float>());
+			ImGui::TableSetColumnIndex(0);
+			ImGui::BeginGroup();
+			{
+				if (tracerRunning) {
+					ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(64, 32, 32, 255));
+					ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(192, 64, 64, 255));
+					ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(255, 64, 64, 255));
+					if (ImGui::ButtonEx("Cancel", ImVec2(48.0f, 48.0f))) { RequestCancel(); }
+					ImGui::PopStyleColor(3);
+				} else {
+					if (ImGui::ButtonEx("Start", ImVec2(48.0f, 48.0f))) { RequestTrace(); }
+				}
 			}
-			ImGui::Text("%s", renderTimeStr.c_str());
+			ImGui::EndGroup();
 
-			const std::string progressStr = fmt::format("Progress: {} / {}", _samplesCompleted, _samplesPerPixel);
-			ImGui::Text("%s", progressStr.c_str());
+			ImGui::TableSetColumnIndex(1);
+			ImGui::BeginGroup();
+			{
+				ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0, 0.0));
 
-			const uint64_t raysPerSecond =
-				renderTimeSeconds > 0.0f ? std::floor(float(_raysCompleted) / renderTimeSeconds) : 0ull;
-			const std::string rpsStr = fmt::format(std::locale("en_US.UTF-8"), "RPS: {:L}", raysPerSecond);
-			ImGui::Text("%s", rpsStr.c_str());
+				const auto renderTime        = _renderTime.Get();
+				const auto renderTimeSeconds = renderTime.AsSeconds<float>();
+				std::string renderTimeStr;
+				if (renderTimeSeconds > 10.0f) {
+					renderTimeStr = fmt::format("Render Time: {:.1f}s", renderTimeSeconds);
+				} else {
+					renderTimeStr = fmt::format("Render Time: {:.2f}ms", renderTime.AsMilliseconds<float>());
+				}
+				ImGui::Text("%s", renderTimeStr.c_str());
 
-			ImGui::PopStyleVar();
+				const std::string progressStr = fmt::format("Progress: {} / {}", _samplesCompleted, _samplesRequested);
+				ImGui::Text("%s", progressStr.c_str());
+
+				const uint64_t raysPerSecond =
+					renderTimeSeconds > 0.0f ? std::floor(float(_raysCompleted) / renderTimeSeconds) : 0ull;
+				const std::string rpsStr = fmt::format(std::locale("en_US.UTF-8"), "RPS: {:L}", raysPerSecond);
+				ImGui::Text("%s", rpsStr.c_str());
+
+				ImGui::PopStyleVar();
+			}
+			ImGui::EndGroup();
+
+			ImGui::TableSetColumnIndex(2);
+			ImGui::BeginGroup();
+			{
+				ImGui::SetNextItemWidth(48.0f);
+				ImGui::InputScalar("###SamplesPerPixel", ImGuiDataType_U32, &_samplesPerPixel, nullptr, nullptr, "%lu");
+				const auto labelSize = ImGui::CalcTextSize("SPS");
+				const auto padding   = (48.0f - labelSize.x) / 2.0f;
+				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + padding);
+				ImGui::Text("SPS");
+			}
+			ImGui::EndGroup();
+
+			ImGui::EndTable();
 		}
-		ImGui::EndGroup();
 	}
 	ImGui::End();
 }
