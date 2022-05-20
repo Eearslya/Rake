@@ -1,14 +1,17 @@
 include(FetchContent)
 
+FetchContent_Declare(SPSCQueue
+	GIT_REPOSITORY https://github.com/rigtorp/SPSCQueue.git
+	GIT_TAG master)
 FetchContent_Declare(tracy
 	GIT_REPOSITORY https://github.com/wolfpld/tracy.git
 	GIT_TAG master)
 
-FetchContent_MakeAvailable(tracy)
+FetchContent_MakeAvailable(SPSCQueue tracy)
 
 add_executable(Rake)
 target_compile_definitions(Rake PRIVATE TRACY_ENABLE)
-target_link_libraries(Rake PRIVATE Luna stb TracyClient)
+target_link_libraries(Rake PRIVATE Luna SPSCQueue stb TracyClient)
 
 target_sources(Rake PRIVATE
 	Main.cpp
