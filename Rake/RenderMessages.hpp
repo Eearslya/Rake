@@ -16,9 +16,18 @@ struct RenderRequest {
 };
 
 struct RenderResult {
-	glm::uvec2 ImageSize;
+	uint32_t MinY;
+	uint32_t MaxY;
+	uint32_t Width;
 	unsigned int SampleCount;
 	std::vector<Color> Pixels;
 	uint64_t Raycasts;
-	bool RenderComplete;
+	bool Complete;
 };
+
+struct RenderStatus {
+	unsigned int FinishedSamples;
+	uint64_t TotalRaycasts;
+};
+
+struct RenderComplete {};

@@ -25,13 +25,16 @@ class Rake : public Luna::App {
  private:
 	void Render();
 	void RequestCancel();
-	void RequestTrace();
+	void RequestTrace(bool preview = false);
+	void Invalidate();
 
 	void RenderRakeUI();
 	void RenderDockspace();
 	void RenderControls();
 	void RenderViewport();
+	void RenderWorld();
 
+	Luna::Vulkan::BufferHandle _copyBuffer;
 	Luna::Vulkan::ImageHandle _renderImage;
 	Luna::Utility::Stopwatch _renderTime;
 	std::unique_ptr<Tracer> _tracer;
@@ -39,7 +42,9 @@ class Rake : public Luna::App {
 
 	unsigned int _currentWorld = 0;
 	std::vector<std::shared_ptr<World>> _worlds;
+	bool _dirty = true;
 
+	unsigned int _previewSamples  = 1;
 	unsigned int _samplesPerPixel = 100;
 
 	uint64_t _raysCompleted        = 0;

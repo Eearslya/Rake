@@ -13,6 +13,7 @@
 struct World;
 
 struct RenderContext {
+	RenderContext() = default;
 	RenderContext(const RenderRequest& request);
 
 	bool IsComplete() const;
@@ -26,32 +27,65 @@ struct RenderContext {
 	std::shared_ptr<World> World;
 };
 
+struct SubRenderRequest {
+	SubRenderRequest(RenderContext& context) : Context(context) {}
+
+	RenderContext& Context;
+	uint32_t MinY = 0;
+	uint32_t MaxY = 0;
+};
+
+struct SubRenderComplete {
+	uint64_t Raycasts;
+};
+
+class RenderThread {
+ public:
+	RenderThread();
+	~RenderThread() noexcept;
+
+	bool IsRunning() const {
+		return _rendering;
+	}
+
+	rigtorp::SPSCQueue<RenderCancel> Cancels;
+	rigtorp::SPSCQueue<SubRenderRequest> Requests;
+	rigtorp::SPSCQueue<RenderResult> Results;
+
+ private:
+	void RenderWork();
+
+	Color CastRay(const Ray& ray, const World& world, uint64_t& raycasts, uint32_t depth);
+
+	std::atomic_bool _rendering = false;
+	std::atomic_bool _shutdown  = false;
+	std::thread _thread;
+};
+
 class Tracer {
  public:
 	Tracer();
 	~Tracer() noexcept;
 
 	bool IsRunning() const {
-		return bool(_activeContext);
+		return _rendering;
 	}
 
 	rigtorp::SPSCQueue<RenderCancel> Cancels;
+	rigtorp::SPSCQueue<RenderComplete> Completes;
 	rigtorp::SPSCQueue<RenderRequest> Requests;
 	rigtorp::SPSCQueue<RenderResult> Results;
+	rigtorp::SPSCQueue<RenderStatus> Status;
 
  private:
-	constexpr static uint32_t MaxDepth = 50;
+	void DispatchThread();
 
-	void WorkerThread();
-
-	bool CancelRequested();
-	void SendRenderResult();
-	void TryGetRequest();
-	void WorkRequest();
-
-	Color CastRay(const Ray& ray, const World& world, uint64_t& raycasts, uint32_t depth);
-
-	std::unique_ptr<RenderContext> _activeContext;
-	std::atomic_bool _shutdown = false;
-	std::thread _workerThread;
+	RenderContext _activeContext;
+	std::atomic_bool _rendering = false;
+	std::atomic_bool _shutdown  = false;
+	std::thread _dispatchThread;
+	std::vector<RenderThread> _renderThreads;
+	std::vector<unsigned int> _samplesDone;
+	unsigned int _workingRenderThreads = 0;
+	uint64_t _totalRaycasts            = 0;
 };
