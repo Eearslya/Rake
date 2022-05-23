@@ -8,8 +8,6 @@
 #include <thread>
 #include <vector>
 
-#include "DataTypes.hpp"
-
 class Tracer;
 class World;
 
@@ -40,7 +38,7 @@ class Rake : public Luna::App {
 
 	bool CanExport() const;
 
-	void ExportThread(const std::string& filename, const glm::uvec2& size, const std::vector<Color> pixels);
+	void ExportThread(const std::string& filename, const glm::uvec2& size, const void* pixels);
 
 	Luna::Vulkan::BufferHandle _copyBuffer;
 	Luna::Vulkan::ImageHandle _renderImage;

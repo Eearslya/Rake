@@ -2,26 +2,12 @@
 
 #include <Luna/Utility/Log.hpp>
 
-#include "BVHNode.hpp"
-#include "IMaterial.hpp"
-#include "ISkyMaterial.hpp"
-#include "Random.hpp"
 #include "World.hpp"
 
 using Luna::Log;
 
 RenderContext::RenderContext(const RenderRequest& request)
-		: Cam(request.World->CameraPos,
-          request.World->CameraTarget,
-          request.World->VerticalFOV,
-          double(request.ImageSize.x) / double(request.ImageSize.y),
-          request.World->CameraAperture,
-          request.World->CameraFocusDistance),
-			CurrentSample(0),
-			Raycasts(0),
-			Request(request),
-			SampleCount(request.SampleCount),
-			World(request.World) {}
+		: CurrentSample(0), Raycasts(0), Request(request), SampleCount(request.SampleCount), World(request.World) {}
 
 bool RenderContext::IsComplete() const {
 	return CurrentSample >= SampleCount;
@@ -47,36 +33,17 @@ void RenderThread::RenderWork() {
 
 			const auto& context = request.Context;
 			const auto& world   = *context.World;
-			const auto width    = context.Request.ImageSize.x;
-			const auto height   = context.Request.ImageSize.y;
-
-			std::vector<Color> pixels(width * (request.MaxY - request.MinY) + 1);
-			std::fill(pixels.begin(), pixels.end(), Color(0.0));
 
 			uint64_t raycasts = 0;
 			for (uint32_t s = 0; s < context.SampleCount; ++s) {
-				for (uint32_t y = request.MinY; y < request.MaxY; ++y) {
-					for (uint32_t x = 0; x < width; ++x) {
-						const auto s         = (double(x) + RandomDouble()) / (width - 1);
-						const auto t         = 1.0 - ((double(y) + RandomDouble()) / (height - 1));
-						const Ray ray        = context.Cam.GetRay(s, t);
-						const Color rayColor = CastRay(ray, world, raycasts, 0);
-
-						pixels[((y - request.MinY) * width) + x] += rayColor;
-					}
-				}
-
 				bool complete   = (s + 1) == context.SampleCount;
 				bool sendResult = Results.empty();
 				if (complete) { sendResult = true; }
 				if (sendResult) {
 					RenderResult result{.MinY        = request.MinY,
 					                    .MaxY        = request.MaxY,
-					                    .Width       = width,
 					                    .SampleCount = s + 1,
-					                    .Pixels      = pixels,
 					                    .Raycasts    = raycasts,
-					                    .ThreadID    = _threadID,
 					                    .Complete    = complete};
 					Results.push(std::move(result));
 					raycasts = 0;
@@ -94,27 +61,6 @@ void RenderThread::RenderWork() {
 		} else {
 			std::this_thread::sleep_for(25ms);
 		}
-	}
-}
-
-Color RenderThread::CastRay(const Ray& ray, const World& world, uint64_t& raycasts, uint32_t depth) {
-	constexpr static uint32_t MaxDepth = 50;
-
-	if (depth >= MaxDepth) { return Color(0.0); }
-	++raycasts;
-
-	HitRecord hit;
-	if (world.BVH->Hit(ray, 0.001, Infinity, hit)) {
-		Color attenuation;
-		Ray scattered;
-		const Color emission = hit.Material->Emit(hit.UV, hit.Point);
-		if (hit.Material->Scatter(ray, hit, attenuation, scattered)) {
-			return emission + attenuation * CastRay(scattered, world, raycasts, depth + 1);
-		} else {
-			return emission;
-		}
-	} else {
-		return world.Sky->Sample(ray);
 	}
 }
 
@@ -207,25 +153,27 @@ void Tracer::DispatchThread() {
 			if (Requests.front()) {
 				_activeContext = RenderContext(*Requests.front());
 				_rendering     = true;
-				_activeContext.World->ConstructBVH();
 
 				const auto& request = _activeContext.Request;
 				Log::Info("Tracer-Dispatch", "Received render request.");
-				Log::Info("Tracer-Dispatch", "- Image Size: {} x {}", request.ImageSize.x, request.ImageSize.y);
 				Log::Info("Tracer-Dispatch", "- Samples Per Pixel: {}", request.SampleCount);
 
+				/*
 				const auto width               = request.ImageSize.x;
 				const auto height              = request.ImageSize.y;
 				const auto threadCount         = _renderThreads.size();
 				const uint32_t heightPerThread = ceil(float(height) / float(threadCount));
+				*/
 
 				SubRenderRequest subRequest(_activeContext);
 				std::vector<SubRenderRequest> subRequests;
+				/*
 				while (subRequest.MaxY < height) {
-					subRequest.MinY = subRequest.MaxY;
-					subRequest.MaxY = std::min(subRequest.MinY + heightPerThread, height);
-					subRequests.push_back(subRequest);
+				  subRequest.MinY = subRequest.MaxY;
+				  subRequest.MaxY = std::min(subRequest.MinY + heightPerThread, height);
+				  subRequests.push_back(subRequest);
 				}
+				*/
 				const auto renderThreadCount = subRequests.size();
 				Log::Info("Tracer-Dispatch", "Dispatching {} render threads.", renderThreadCount);
 				std::fill(_samplesDone.begin(), _samplesDone.end(), 0);

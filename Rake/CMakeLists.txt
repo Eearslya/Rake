@@ -15,20 +15,9 @@ target_include_directories(Rake PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(Rake PRIVATE Luna SPSCQueue stb TracyClient)
 
 target_sources(Rake PRIVATE
-	AABB.cpp
-	BVHNode.cpp
-	Camera.cpp
-	CheckerTexture.cpp
-	HittableList.cpp
-	ImageTexture.cpp
 	Main.cpp
-	Plane.cpp
 	Rake.cpp
-	Rectangle.cpp
-	SolidTexture.cpp
-	Sphere.cpp
 	Tracer.cpp)
-add_subdirectory(Materials)
 
 add_custom_target(Run
 	COMMAND Rake

@@ -5,9 +5,6 @@
 #include <memory>
 #include <thread>
 
-#include "Camera.hpp"
-#include "DataTypes.hpp"
-#include "Ray.hpp"
 #include "RenderMessages.hpp"
 
 struct World;
@@ -18,9 +15,7 @@ struct RenderContext {
 
 	bool IsComplete() const;
 
-	Camera Cam;
 	unsigned int CurrentSample;
-	std::vector<Color> Pixels;
 	uint64_t Raycasts;
 	RenderRequest Request;
 	unsigned int SampleCount;
@@ -57,8 +52,6 @@ class RenderThread {
 
  private:
 	void RenderWork();
-
-	Color CastRay(const Ray& ray, const World& world, uint64_t& raycasts, uint32_t depth);
 
 	std::atomic_bool _rendering = false;
 	std::atomic_bool _shutdown  = false;

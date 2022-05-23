@@ -11,17 +11,7 @@
 #include <Luna/Utility/Time.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "CheckerTexture.hpp"
-#include "ImageTexture.hpp"
-#include "Materials/DielectricMaterial.hpp"
-#include "Materials/GradientSkyMaterial.hpp"
-#include "Materials/LambertianMaterial.hpp"
-#include "Materials/MetalMaterial.hpp"
-#include "Plane.hpp"
-#include "Random.hpp"
 #include "RenderMessages.hpp"
-#include "SolidTexture.hpp"
-#include "Sphere.hpp"
 #include "Tracer.hpp"
 #include "World.hpp"
 
@@ -47,71 +37,7 @@ void Rake::Start() {
 		return *world;
 	};
 
-	{
-		auto& world               = CreateWorld("World");
-		world.Sky                 = std::make_shared<GradientSkyMaterial>(Color(1.0), Color(0.5, 0.7, 1.0), 0.5);
-		world.CameraPos           = Point3(0.0, 0.0, 0.0);
-		world.CameraTarget        = Point3(0.0, 0.0, -1.0);
-		world.CameraFocusDistance = 1.0;
-		world.VerticalFOV         = 100;
-		auto ground               = std::make_shared<LambertianMaterial>(Color(0.3, 0.3, 0.8));
-		auto center               = std::make_shared<LambertianMaterial>(Color(0.3, 0.8, 0.3));
-		auto left                 = std::make_shared<DielectricMaterial>(1.5);
-		auto right                = std::make_shared<MetalMaterial>(Color(0.8, 0.6, 0.2), 1.0);
-		world.Objects.Add<Sphere>(Point3(0, -100.5, -1), 100, ground);
-		world.Objects.Add<Sphere>(Point3(0, 0, -1), 0.5, center);
-		world.Objects.Add<Sphere>(Point3(-1, 0, -1), 0.5, left);
-		world.Objects.Add<Sphere>(Point3(-1, 0, -1), -0.45, left);
-		world.Objects.Add<Sphere>(Point3(1, 0, -1), 0.5, right);
-	}
-
-	{
-		auto& world               = CreateWorld("Raytracing In One Weekend");
-		world.Sky                 = std::make_shared<GradientSkyMaterial>(Color(1.0), Color(0.5, 0.7, 1.0), 0.5);
-		world.CameraPos           = Point3(13.0, 2.0, 5.0);
-		world.CameraTarget        = Point3(0.0, 0.0, 0.0);
-		world.CameraFocusDistance = 12.0;
-		world.CameraAperture      = 0.1;
-		world.VerticalFOV         = 20;
-
-		auto checker = std::make_shared<CheckerTexture>(Color(0.2), Color(0.36, 0.0, 0.63), Pi);
-		auto earth   = std::make_shared<ImageTexture>("Assets/Textures/Earth.jpg");
-		auto ground  = std::make_shared<LambertianMaterial>(checker);
-		auto center  = std::make_shared<DielectricMaterial>(1.5);
-		auto left    = std::make_shared<LambertianMaterial>(earth);
-		auto right   = std::make_shared<MetalMaterial>(Color(0.7, 0.6, 0.5), 0.0);
-		world.Objects.Add<XZPlane>(0.0, ground);
-		world.Objects.Add<Sphere>(Point3(0, 1, 0), 1, center);
-		world.Objects.Add<Sphere>(Point3(-4, 1, 0), 1, left);
-		world.Objects.Add<Sphere>(Point3(4, 1, 0), 1, right);
-
-		for (int x = -11; x < 11; x++) {
-			for (int y = -11; y < 11; y++) {
-				const auto randomMat = RandomDouble();
-				const Point3 center(x + 0.9 * RandomDouble(), 0.2, y + 0.9 * RandomDouble());
-
-				if (glm::length(center - Point3(4, 0.2, 0)) > 0.9) {
-					std::shared_ptr<IMaterial> material;
-					if (randomMat < 0.4) {
-						const auto albedo = RandomColor() * RandomColor();
-						material          = std::make_shared<LambertianMaterial>(albedo);
-					} else if (randomMat < 0.8) {
-						const auto albedoA = RandomColor() * RandomColor();
-						const auto albedoB = RandomColor() * RandomColor();
-						material = std::make_shared<LambertianMaterial>(std::make_shared<CheckerTexture>(albedoA, albedoB, 20.0));
-					} else if (randomMat < 0.95) {
-						const auto albedo    = RandomColor(0.5, 1.0);
-						const auto roughness = RandomDouble(0.0, 0.5);
-						material             = std::make_shared<MetalMaterial>(albedo, roughness);
-					} else {
-						material = std::make_shared<DielectricMaterial>(1.5);
-					}
-
-					world.Objects.Add<Sphere>(center, 0.2, material);
-				}
-			}
-		}
-	}
+	{ auto& world = CreateWorld("World"); }
 }
 
 void Rake::Update() {
@@ -152,17 +78,19 @@ void Rake::Render() {
 		--resultLimit;
 		gotResults = true;
 
+		/*
 		const auto scale = 1.0 / result.SampleCount;
 		for (auto& pixel : result.Pixels) {
-			pixel.r = glm::sqrt(scale * pixel.r);
-			pixel.g = glm::sqrt(scale * pixel.g);
-			pixel.b = glm::sqrt(scale * pixel.b);
+		  pixel.r = glm::sqrt(scale * pixel.r);
+		  pixel.g = glm::sqrt(scale * pixel.g);
+		  pixel.b = glm::sqrt(scale * pixel.b);
 		}
 
 		Color* copyBuffer  = reinterpret_cast<Color*>(_copyBuffer->Map());
 		Color* start       = copyBuffer + (result.MinY * result.Width);
 		const size_t bytes = (result.MaxY - result.MinY) * result.Width * sizeof(Color);
 		memcpy(start, result.Pixels.data(), bytes);
+		*/
 	}
 	if (gotResults) {
 		cmdBuf->ImageBarrier(*_renderImage,
@@ -200,6 +128,7 @@ void Rake::Render() {
 
 void Rake::Export() {
 	if (_exporting) { return; }
+	/*
 	_exporting = true;
 	_exportTimer.Start();
 	Color* pixels              = reinterpret_cast<Color*>(_copyBuffer->Map());
@@ -207,12 +136,13 @@ void Rake::Export() {
 	const std::string filename = fmt::format("{}-{}.png", _worlds[_currentWorld]->Name, _samplesCompleted);
 	Log::Info("Rake", "Exporting render result {}.", filename);
 	_exportThread = std::thread(
-		[this](const std::string& filename, const glm::uvec2& size, const std::vector<Color> pixels) {
-			ExportThread(filename, size, pixels);
-		},
-		filename,
-		_viewportSize,
-		std::vector<Color>(pixels, pixels + pixelCount));
+	  [this](const std::string& filename, const glm::uvec2& size, const std::vector<Color> pixels) {
+	    ExportThread(filename, size, pixels);
+	  },
+	  filename,
+	  _viewportSize,
+	  std::vector<Color>(pixels, pixels + pixelCount));
+	*/
 }
 
 void Rake::RequestCancel() {
@@ -224,15 +154,14 @@ void Rake::RequestCancel() {
 void Rake::RequestTrace(bool preview) {
 	auto& device = Graphics::Get()->GetDevice();
 
-	RenderRequest request{.ImageSize   = _viewportSize,
-	                      .SampleCount = preview ? _previewSamples : _samplesPerPixel,
-	                      .World       = _worlds[_currentWorld]};
+	/*
+	RenderRequest request{.SampleCount = preview ? _previewSamples : _samplesPerPixel, .World = _worlds[_currentWorld]};
 	_tracer->Requests.push(request);
 	std::vector<Color> pixels(_viewportSize.x * _viewportSize.y);
 	std::fill(pixels.begin(), pixels.end(), Color(0.0f));
 
 	const Vulkan::ImageCreateInfo imageCI = Vulkan::ImageCreateInfo::Immutable2D(
-		vk::Format::eR32G32B32Sfloat, vk::Extent2D(_viewportSize.x, _viewportSize.y), false);
+	  vk::Format::eR32G32B32Sfloat, vk::Extent2D(_viewportSize.x, _viewportSize.y), false);
 	const Vulkan::InitialImageData initial{.Data = pixels.data(), .RowLength = 0, .ImageHeight = 0};
 	_renderImage = device.CreateImage(imageCI, &initial);
 
@@ -243,6 +172,7 @@ void Rake::RequestTrace(bool preview) {
 
 	_renderTime.Start();
 	_samplesRequested = request.SampleCount;
+	*/
 }
 
 void Rake::Invalidate() {
@@ -425,29 +355,6 @@ void Rake::RenderWorld() {
 
 		if (tracerRunning) { ImGui::BeginDisabled(); }
 
-		glm::vec3 camPos = world->CameraPos;
-		if (ImGui::DragFloat3("Camera Position", glm::value_ptr(camPos), 0.1f, 0.0f, 0.0f, "%.2f")) {
-			world->CameraPos = camPos;
-		}
-
-		glm::vec3 camTarget = world->CameraTarget;
-		if (ImGui::DragFloat3("Camera Target", glm::value_ptr(camTarget), 0.1f, 0.0f, 0.0f, "%.2f")) {
-			world->CameraTarget = camTarget;
-		}
-
-		float vFov = world->VerticalFOV;
-		if (ImGui::DragFloat("Vertical FOV", &vFov, 0.1f, 0.0f, 0.0f, "%.2f")) { world->VerticalFOV = vFov; }
-
-		float camAperture = world->CameraAperture;
-		if (ImGui::DragFloat("Camera Aperture", &camAperture, 0.1f, 0.0f, 0.0f, "%.2f")) {
-			world->CameraAperture = camAperture;
-		}
-
-		float camFocus = world->CameraFocusDistance;
-		if (ImGui::DragFloat("Camera Focus", &camFocus, 0.1f, 0.0f, 0.0f, "%.2f")) {
-			world->CameraFocusDistance = camFocus;
-		}
-
 		if (ImGui::ButtonEx("Refresh", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f))) { _dirty = true; }
 
 		if (tracerRunning) { ImGui::EndDisabled(); }
@@ -459,17 +366,19 @@ bool Rake::CanExport() const {
 	return !_tracer->IsRunning() && _copyBuffer && !_exporting;
 }
 
-void Rake::ExportThread(const std::string& filename, const glm::uvec2& viewportSize, const std::vector<Color> pixels) {
+void Rake::ExportThread(const std::string& filename, const glm::uvec2& viewportSize, const void* pixels) {
+	/*
 	const auto pixelCount = viewportSize.x * viewportSize.y;
 	std::vector<uint32_t> rgba(pixelCount, 0xff000000);
 	for (uint64_t pixel = 0; pixel < pixelCount; ++pixel) {
-		const auto& p    = pixels[pixel];
-		const uint32_t r = static_cast<uint8_t>(glm::clamp(p.r, 0.0f, 1.0f) * 255.999f);
-		const uint32_t g = static_cast<uint8_t>(glm::clamp(p.g, 0.0f, 1.0f) * 255.999f) << 8;
-		const uint32_t b = static_cast<uint8_t>(glm::clamp(p.b, 0.0f, 1.0f) * 255.999f) << 16;
-		rgba[pixel] |= r | g | b;
+	  const auto& p    = pixels[pixel];
+	  const uint32_t r = static_cast<uint8_t>(glm::clamp(p.r, 0.0f, 1.0f) * 255.999f);
+	  const uint32_t g = static_cast<uint8_t>(glm::clamp(p.g, 0.0f, 1.0f) * 255.999f) << 8;
+	  const uint32_t b = static_cast<uint8_t>(glm::clamp(p.b, 0.0f, 1.0f) * 255.999f) << 16;
+	  rgba[pixel] |= r | g | b;
 	}
 	stbi_write_png(filename.c_str(), viewportSize.x, viewportSize.y, 4, rgba.data(), sizeof(uint32_t) * viewportSize.x);
+	*/
 	_exporting = false;
 	_exportTimer.Stop();
 }
