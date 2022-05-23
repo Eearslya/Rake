@@ -17,3 +17,5 @@ Build/
 *.pdb
 *.spv
 imgui.ini
+
+/*.png
