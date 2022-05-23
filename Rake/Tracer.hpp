@@ -47,6 +47,9 @@ class RenderThread {
 	bool IsRunning() const {
 		return _rendering;
 	}
+	void SetThreadID(uint32_t threadID) {
+		_threadID = threadID;
+	}
 
 	rigtorp::SPSCQueue<RenderCancel> Cancels;
 	rigtorp::SPSCQueue<SubRenderRequest> Requests;
@@ -60,6 +63,7 @@ class RenderThread {
 	std::atomic_bool _rendering = false;
 	std::atomic_bool _shutdown  = false;
 	std::thread _thread;
+	uint32_t _threadID;
 };
 
 class Tracer {

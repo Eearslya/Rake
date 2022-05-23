@@ -5,6 +5,16 @@
 
 #include "DataTypes.hpp"
 
+inline float RandomFloat() {
+	static std::uniform_real_distribution<float> distribution(0.0f, 1.0f);
+	static std::mt19937 generator;
+	return distribution(generator);
+}
+
+inline float RandomFloat(float min, float max) {
+	return min + (max - min) * RandomFloat();
+}
+
 inline double RandomDouble() {
 	static std::uniform_real_distribution<double> distribution(0.0, 1.0);
 	static std::mt19937 generator;
@@ -13,6 +23,14 @@ inline double RandomDouble() {
 
 inline double RandomDouble(double min, double max) {
 	return min + (max - min) * RandomDouble();
+}
+
+inline int RandomInt(int min, int max) {
+	return static_cast<int>(RandomDouble(min, max + 1));
+}
+
+inline Color RandomColor(float min = 0.0, float max = 1.0) {
+	return Color(RandomFloat(min, max), RandomFloat(min, max), RandomFloat(min, max));
 }
 
 inline Vector3 RandomInUnitSphere() {

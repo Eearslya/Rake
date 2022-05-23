@@ -22,6 +22,7 @@ struct RenderResult {
 	unsigned int SampleCount;
 	std::vector<Color> Pixels;
 	uint64_t Raycasts;
+	uint32_t ThreadID;
 	bool Complete;
 };
 

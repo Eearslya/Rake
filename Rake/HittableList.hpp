@@ -13,6 +13,7 @@ class HittableList : public IHittable {
 	void Add(const std::shared_ptr<IHittable>& object);
 	void Clear();
 
+	virtual bool Bounds(AABB& outBounds) const override;
 	virtual bool Hit(const Ray& ray, double tMin, double tMax, HitRecord& outRecord) const override;
 
 	template <typename T, typename... Args>

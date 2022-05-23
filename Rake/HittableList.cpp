@@ -12,6 +12,18 @@ void HittableList::Clear() {
 	Objects.clear();
 }
 
+bool HittableList::Bounds(AABB& outBounds) const {
+	if (Objects.empty()) { return false; }
+
+	AABB bounds;
+	for (const auto& obj : Objects) {
+		if (!obj->Bounds(bounds)) { return false; }
+		outBounds = outBounds.Contain(bounds);
+	}
+
+	return true;
+}
+
 bool HittableList::Hit(const Ray& ray, double tMin, double tMax, HitRecord& outRecord) const {
 	HitRecord hit;
 	bool hitAnything  = false;

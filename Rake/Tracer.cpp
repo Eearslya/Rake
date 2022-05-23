@@ -2,6 +2,9 @@
 
 #include <Luna/Utility/Log.hpp>
 
+#include "BVHNode.hpp"
+#include "IMaterial.hpp"
+#include "ISkyMaterial.hpp"
 #include "Random.hpp"
 #include "World.hpp"
 
@@ -73,6 +76,7 @@ void RenderThread::RenderWork() {
 					                    .SampleCount = s + 1,
 					                    .Pixels      = pixels,
 					                    .Raycasts    = raycasts,
+					                    .ThreadID    = _threadID,
 					                    .Complete    = complete};
 					Results.push(std::move(result));
 					raycasts = 0;
@@ -100,11 +104,17 @@ Color RenderThread::CastRay(const Ray& ray, const World& world, uint64_t& raycas
 	++raycasts;
 
 	HitRecord hit;
-	if (world.Objects.Hit(ray, 0.001, Infinity, hit)) {
-		const Point3 target = hit.Point + RandomInHemisphere(hit.Normal);
-		return 0.5f * CastRay(Ray(hit.Point, glm::normalize(target - hit.Point)), world, raycasts, depth + 1);
+	if (world.BVH->Hit(ray, 0.001, Infinity, hit)) {
+		Color attenuation;
+		Ray scattered;
+		const Color emission = hit.Material->Emit(hit.UV, hit.Point);
+		if (hit.Material->Scatter(ray, hit, attenuation, scattered)) {
+			return emission + attenuation * CastRay(scattered, world, raycasts, depth + 1);
+		} else {
+			return emission;
+		}
 	} else {
-		return world.Sky;
+		return world.Sky->Sample(ray);
 	}
 }
 
@@ -116,6 +126,7 @@ Tracer::Tracer() : Cancels(1), Completes(1), Requests(1), Results(16), Status(1)
 	Log::Info("Tracer", "Starting {} render threads.", threadCount);
 	_renderThreads = std::vector<RenderThread>(threadCount);
 	_samplesDone   = std::vector<unsigned int>(threadCount, 0);
+	for (int t = 0; t < threadCount; ++t) { _renderThreads[t].SetThreadID(t); }
 }
 
 Tracer::~Tracer() noexcept {
@@ -196,6 +207,7 @@ void Tracer::DispatchThread() {
 			if (Requests.front()) {
 				_activeContext = RenderContext(*Requests.front());
 				_rendering     = true;
+				_activeContext.World->ConstructBVH();
 
 				const auto& request = _activeContext.Request;
 				Log::Info("Tracer-Dispatch", "Received render request.");
