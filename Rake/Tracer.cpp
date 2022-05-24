@@ -1,6 +1,7 @@
 #include "Tracer.hpp"
 
 #include <Luna/Utility/Log.hpp>
+#include <Tracy.hpp>
 
 #include "BVHNode.hpp"
 #include "IMaterial.hpp"
@@ -55,6 +56,8 @@ void RenderThread::RenderWork() {
 
 			uint64_t raycasts = 0;
 			for (uint32_t s = 0; s < context.SampleCount; ++s) {
+				ZoneScopedN("Calculate Sample");
+
 				for (uint32_t y = request.MinY; y < request.MaxY; ++y) {
 					for (uint32_t x = 0; x < width; ++x) {
 						const auto s         = (double(x) + RandomDouble()) / (width - 1);
@@ -70,6 +73,8 @@ void RenderThread::RenderWork() {
 				bool sendResult = Results.empty();
 				if (complete) { sendResult = true; }
 				if (sendResult) {
+					ZoneScopedN("Send Result");
+
 					RenderResult result{.MinY        = request.MinY,
 					                    .MaxY        = request.MaxY,
 					                    .Width       = width,

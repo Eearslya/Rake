@@ -5,7 +5,7 @@ FetchContent_Declare(SPSCQueue
 	GIT_TAG master)
 FetchContent_Declare(tracy
 	GIT_REPOSITORY https://github.com/wolfpld/tracy.git
-	GIT_TAG master)
+	GIT_TAG v0.8.1)
 
 FetchContent_MakeAvailable(SPSCQueue tracy)
 

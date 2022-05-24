@@ -14,6 +14,7 @@
 #include "CheckerTexture.hpp"
 #include "ImageTexture.hpp"
 #include "Materials/DielectricMaterial.hpp"
+#include "Materials/DiffuseLightMaterial.hpp"
 #include "Materials/GradientSkyMaterial.hpp"
 #include "Materials/LambertianMaterial.hpp"
 #include "Materials/MetalMaterial.hpp"
@@ -66,20 +67,22 @@ void Rake::Start() {
 	}
 
 	{
-		auto& world               = CreateWorld("Raytracing In One Weekend");
-		world.Sky                 = std::make_shared<GradientSkyMaterial>(Color(1.0), Color(0.5, 0.7, 1.0), 0.5);
-		world.CameraPos           = Point3(13.0, 2.0, 5.0);
-		world.CameraTarget        = Point3(0.0, 0.0, 0.0);
+		auto& world        = CreateWorld("Raytracing In One Weekend");
+		world.Sky          = std::make_shared<GradientSkyMaterial>(Color(1.0) * 0.2f, Color(0.5, 0.7, 1.0) * 0.2f, 0.5);
+		world.CameraPos    = Point3(13.0, 2.0, 5.0);
+		world.CameraTarget = Point3(0.0, 0.0, 0.0);
 		world.CameraFocusDistance = 12.0;
 		world.CameraAperture      = 0.1;
 		world.VerticalFOV         = 20;
 
-		auto checker = std::make_shared<CheckerTexture>(Color(0.2), Color(0.36, 0.0, 0.63), Pi);
+		auto light   = std::make_shared<DiffuseLightMaterial>(Color(40.0));
+		auto checker = std::make_shared<CheckerTexture>(Color(0.2), Color(0.36, 0.0, 0.63), glm::vec2(Pi));
 		auto earth   = std::make_shared<ImageTexture>("Assets/Textures/Earth.jpg");
 		auto ground  = std::make_shared<LambertianMaterial>(checker);
 		auto center  = std::make_shared<DielectricMaterial>(1.5);
 		auto left    = std::make_shared<LambertianMaterial>(earth);
 		auto right   = std::make_shared<MetalMaterial>(Color(0.7, 0.6, 0.5), 0.0);
+		world.Objects.Add<XYRectangle>(Point2(2, 2), Point2(5, 5), 5, light);
 		world.Objects.Add<XZPlane>(0.0, ground);
 		world.Objects.Add<Sphere>(Point3(0, 1, 0), 1, center);
 		world.Objects.Add<Sphere>(Point3(-4, 1, 0), 1, left);
@@ -98,7 +101,8 @@ void Rake::Start() {
 					} else if (randomMat < 0.8) {
 						const auto albedoA = RandomColor() * RandomColor();
 						const auto albedoB = RandomColor() * RandomColor();
-						material = std::make_shared<LambertianMaterial>(std::make_shared<CheckerTexture>(albedoA, albedoB, 20.0));
+						material           = std::make_shared<LambertianMaterial>(
+              std::make_shared<CheckerTexture>(albedoA, albedoB, glm::vec2(30.0f, 15.0f)));
 					} else if (randomMat < 0.95) {
 						const auto albedo    = RandomColor(0.5, 1.0);
 						const auto roughness = RandomDouble(0.0, 0.5);
@@ -188,6 +192,10 @@ void Rake::Render() {
 		                     vk::AccessFlagBits::eTransferWrite,
 		                     vk::PipelineStageFlagBits::eFragmentShader,
 		                     vk::AccessFlagBits::eShaderRead);
+
+		if (_autoExport > 0) {
+			if (_samplesCompleted == 1 || (_samplesCompleted > 0 && _samplesCompleted % _autoExport == 0)) { Export(); }
+		}
 	}
 
 	UIManager::Get()->BeginFrame();
@@ -277,7 +285,7 @@ void Rake::RenderControls() {
 			ImGui::TableSetColumnIndex(0);
 			ImGui::BeginGroup();
 			{
-				ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0, 0.0));
+				ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0, 4.0));
 
 				if (tracerRunning) {
 					ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(64, 32, 32, 255));
@@ -290,6 +298,7 @@ void Rake::RenderControls() {
 				}
 
 				ImGui::SameLine();
+				ImGui::BeginGroup();
 				if (!CanExport()) { ImGui::BeginDisabled(); }
 				if (_exporting) {
 					constexpr float interval = 0.2f;
@@ -300,7 +309,10 @@ void Rake::RenderControls() {
 				} else {
 					if (ImGui::ButtonEx("Export", ImVec2(48.0f, 24.0f))) { Export(); }
 				}
+				ImGui::SetNextItemWidth(48.0f);
+				ImGui::InputScalar("###AutoExport", ImGuiDataType_U32, &_autoExport, nullptr, nullptr, "%u");
 				if (!CanExport()) { ImGui::EndDisabled(); }
+				ImGui::EndGroup();
 
 				ImGui::PopStyleVar();
 			}
