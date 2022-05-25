@@ -65,6 +65,7 @@ class Log {
 			case Level::Trace:
 				return spdlog::level::trace;
 		}
+		return spdlog::level::info;
 	}
 
 	static std::shared_ptr<spdlog::logger> _mainLogger;

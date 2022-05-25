@@ -155,6 +155,8 @@ void Rake::Render() {
 		_tracer->Results.pop();
 		--resultLimit;
 		gotResults = true;
+		if (result.ThreadID + 1 > _threadStatus.size()) { _threadStatus.resize(result.ThreadID + 1); }
+		_threadStatus[result.ThreadID] = result.SampleCount;
 
 		const auto scale = 1.0 / result.SampleCount;
 		for (auto& pixel : result.Pixels) {
@@ -251,6 +253,7 @@ void Rake::RequestTrace(bool preview) {
 
 	_renderTime.Start();
 	_samplesRequested = request.SampleCount;
+	_threadStatus.clear();
 }
 
 void Rake::Invalidate() {
@@ -264,6 +267,13 @@ void Rake::RenderRakeUI() {
 	RenderViewport();
 	RenderWorld();
 	ImGui::ShowDemoWindow();
+
+	ImGui::Begin("Debug");
+	for (size_t t = 0; t < _threadStatus.size(); ++t) {
+		const std::string status = fmt::format("Thread {}: {}", t, _threadStatus[t]);
+		ImGui::Text("%s", status.c_str());
+	}
+	ImGui::End();
 }
 
 void Rake::RenderControls() {

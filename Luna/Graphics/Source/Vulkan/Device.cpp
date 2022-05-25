@@ -106,12 +106,12 @@ Device::Device() {
 				if (layer == nullptr) {
 					extensions = vk::enumerateInstanceExtensionProperties(nullptr);
 				} else {
-					extensions = vk::enumerateInstanceExtensionProperties(std::string(layer->layerName));
+					extensions = vk::enumerateInstanceExtensionProperties(std::string(layer->layerName.data()));
 				}
 
 				for (const auto& extension : extensions) {
-					const std::string name = std::string(extension.extensionName);
-					Extension ext{name, extension.specVersion, layer ? std::string(layer->layerName) : ""};
+					const std::string name = std::string(extension.extensionName.data());
+					Extension ext{name, extension.specVersion, layer ? std::string(layer->layerName.data()) : ""};
 					auto it = availableExtensions.find(name);
 					if (it == availableExtensions.end() || it->second.Version < ext.Version) { availableExtensions[name] = ext; }
 				}
@@ -125,7 +125,7 @@ Device::Device() {
 		{
 			const auto HasLayer = [&availableLayers](const char* layerName) -> bool {
 				for (const auto& layer : availableLayers) {
-					if (strcmp(layer.layerName, layerName) == 0) { return true; }
+					if (strcmp(layer.layerName.data(), layerName) == 0) { return true; }
 				}
 
 				return false;
@@ -236,7 +236,7 @@ Device::Device() {
 
 			// Find any extensions hidden within enabled layers.
 			for (const auto& layer : gpuInfo.Layers) {
-				const auto layerExtensions = gpu.enumerateDeviceExtensionProperties(std::string(layer.layerName));
+				const auto layerExtensions = gpu.enumerateDeviceExtensionProperties(std::string(layer.layerName.data()));
 				for (const auto& ext : layerExtensions) {
 					auto it = std::find_if(gpuInfo.AvailableExtensions.begin(),
 					                       gpuInfo.AvailableExtensions.end(),

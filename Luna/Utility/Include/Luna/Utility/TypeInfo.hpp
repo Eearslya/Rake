@@ -14,6 +14,7 @@ class TypeInfo {
 
 	template <typename K, typename = std::enable_if_t<std::is_convertible_v<K*, T*>>>
 	static TypeID GetTypeID() noexcept {
+		if (_nextTypeID == 0) { _typeMap = {}; }
 		const std::type_index typeIndex(typeid(K));
 		const auto it = _typeMap.find(typeIndex);
 		if (it != _typeMap.end()) { return it->second; }
@@ -32,6 +33,6 @@ template <typename T>
 TypeID TypeInfo<T>::_nextTypeID = 0;
 
 template <typename T>
-std::unordered_map<std::type_index, TypeID> TypeInfo<T>::_typeMap;
+std::unordered_map<std::type_index, TypeID> TypeInfo<T>::_typeMap = {};
 }  // namespace Utility
 }  // namespace Luna

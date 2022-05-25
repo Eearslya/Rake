@@ -116,7 +116,7 @@ void CommandBuffer::SetCullMode(vk::CullModeFlagBits mode) {
 
 void CommandBuffer::SetDepthClamp(bool clamp) {
 	// Require the device feature to be enabled.
-	clamp = clamp & _device.GetGPUInfo().EnabledFeatures.Features.depthClamp;
+	clamp = clamp && _device.GetGPUInfo().EnabledFeatures.Features.depthClamp;
 	SetStaticState(DepthClamp, clamp);
 }
 
