@@ -47,6 +47,7 @@ class Rake : public Luna::App {
 	Luna::Utility::Stopwatch _renderTime;
 	std::unique_ptr<Tracer> _tracer;
 	glm::uvec2 _viewportSize = glm::uvec2(800, 600);
+	std::vector<Color> _pixels;
 
 	unsigned int _currentWorld = 0;
 	std::vector<std::shared_ptr<World>> _worlds;

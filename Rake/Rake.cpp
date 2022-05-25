@@ -119,8 +119,8 @@ void Rake::Start() {
 }
 
 void Rake::Update() {
-	_renderTime.Update();
 	_exportTimer.Update();
+	_tracer->Update();
 	if (_dirty) { Invalidate(); }
 	if (_exportThread.joinable()) { _exportThread.join(); }
 }
@@ -136,41 +136,18 @@ void Rake::Render() {
 
 	auto cmdBuf = device.RequestCommandBuffer(Vulkan::CommandBufferType::Generic, "Main Command Buffer");
 
-	if (_tracer->Status.front()) {
-		RenderStatus status = *_tracer->Status.front();
-		_tracer->Status.pop();
+	const bool renderUpdated = _tracer->UpdatePixels(_pixels);
+	if (renderUpdated) {
+		Log::Info("Rake", "Got updated image.");
 
-		_samplesCompleted = status.FinishedSamples;
-		_raysCompleted    = status.TotalRaycasts;
-	}
-	if (_tracer->Completes.front()) {
-		_tracer->Completes.pop();
-		_renderTime.Stop();
-	}
-
-	bool gotResults = false;
-	int resultLimit = 8;
-	while (resultLimit > 0 && _tracer->Results.front()) {
-		RenderResult result = std::move(*_tracer->Results.front());
-		_tracer->Results.pop();
-		--resultLimit;
-		gotResults = true;
-		if (result.ThreadID + 1 > _threadStatus.size()) { _threadStatus.resize(result.ThreadID + 1); }
-		_threadStatus[result.ThreadID] = result.SampleCount;
-
-		const auto scale = 1.0 / result.SampleCount;
-		for (auto& pixel : result.Pixels) {
-			pixel.r = glm::sqrt(scale * pixel.r);
-			pixel.g = glm::sqrt(scale * pixel.g);
-			pixel.b = glm::sqrt(scale * pixel.b);
+		for (auto& pixel : _pixels) {
+			pixel.r = glm::sqrt(pixel.r);
+			pixel.g = glm::sqrt(pixel.g);
+			pixel.b = glm::sqrt(pixel.b);
 		}
+		Color* pixelData = reinterpret_cast<Color*>(_copyBuffer->Map());
+		memcpy(pixelData, _pixels.data(), _copyBuffer->GetCreateInfo().Size);
 
-		Color* copyBuffer  = reinterpret_cast<Color*>(_copyBuffer->Map());
-		Color* start       = copyBuffer + (result.MinY * result.Width);
-		const size_t bytes = (result.MaxY - result.MinY) * result.Width * sizeof(Color);
-		memcpy(start, result.Pixels.data(), bytes);
-	}
-	if (gotResults) {
 		cmdBuf->ImageBarrier(*_renderImage,
 		                     vk::ImageLayout::eUndefined,
 		                     vk::ImageLayout::eTransferDstOptimal,
@@ -194,10 +171,6 @@ void Rake::Render() {
 		                     vk::AccessFlagBits::eTransferWrite,
 		                     vk::PipelineStageFlagBits::eFragmentShader,
 		                     vk::AccessFlagBits::eShaderRead);
-
-		if (_autoExport > 0) {
-			if (_samplesCompleted == 1 || (_samplesCompleted > 0 && _samplesCompleted % _autoExport == 0)) { Export(); }
-		}
 	}
 
 	UIManager::Get()->BeginFrame();
@@ -226,34 +199,35 @@ void Rake::Export() {
 }
 
 void Rake::RequestCancel() {
-	RenderCancel cancel;
-	const bool cancelled = _tracer->Cancels.try_push(cancel);
-	_renderTime.Stop();
+	if (_tracer->CancelTrace()) { _renderTime.Stop(); }
 }
 
 void Rake::RequestTrace(bool preview) {
 	auto& device = Graphics::Get()->GetDevice();
 
-	RenderRequest request{.ImageSize   = _viewportSize,
-	                      .SampleCount = preview ? _previewSamples : _samplesPerPixel,
-	                      .World       = _worlds[_currentWorld]};
-	_tracer->Requests.push(request);
-	std::vector<Color> pixels(_viewportSize.x * _viewportSize.y);
-	std::fill(pixels.begin(), pixels.end(), Color(0.0f));
+	const auto samplesRequested = preview ? _previewSamples : _samplesPerPixel;
 
-	const Vulkan::ImageCreateInfo imageCI = Vulkan::ImageCreateInfo::Immutable2D(
-		vk::Format::eR32G32B32Sfloat, vk::Extent2D(_viewportSize.x, _viewportSize.y), false);
-	const Vulkan::InitialImageData initial{.Data = pixels.data(), .RowLength = 0, .ImageHeight = 0};
-	_renderImage = device.CreateImage(imageCI, &initial);
+	if (_tracer->StartTrace(_viewportSize, samplesRequested, _worlds[_currentWorld])) {
+		_pixels.resize(_viewportSize.x * _viewportSize.y);
+		std::fill(_pixels.begin(), _pixels.end(), Color(0.0f));
 
-	const Vulkan::BufferCreateInfo bufferCI(Vulkan::BufferDomain::Host,
-	                                        _viewportSize.x * _viewportSize.y * sizeof(Color),
-	                                        vk::BufferUsageFlagBits::eTransferSrc);
-	_copyBuffer = device.CreateBuffer(bufferCI);
+		const Vulkan::ImageCreateInfo imageCI = Vulkan::ImageCreateInfo::Immutable2D(
+			vk::Format::eR32G32B32Sfloat, vk::Extent2D(_viewportSize.x, _viewportSize.y), false);
+		const Vulkan::InitialImageData initial{.Data = _pixels.data(), .RowLength = 0, .ImageHeight = 0};
+		_renderImage = device.CreateImage(imageCI, &initial);
 
-	_renderTime.Start();
-	_samplesRequested = request.SampleCount;
-	_threadStatus.clear();
+		const Vulkan::BufferCreateInfo bufferCI(Vulkan::BufferDomain::Host,
+		                                        _viewportSize.x * _viewportSize.y * sizeof(Color),
+		                                        vk::BufferUsageFlagBits::eTransferSrc);
+		_copyBuffer = device.CreateBuffer(bufferCI);
+
+		_samplesRequested = samplesRequested;
+		_samplesCompleted = 0;
+		_renderTime.Start();
+		_threadStatus.clear();
+	} else {
+		Log::Warning("Rake", "Failed to request raytrace task!");
+	}
 }
 
 void Rake::Invalidate() {
@@ -333,7 +307,7 @@ void Rake::RenderControls() {
 			{
 				ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0, 0.0));
 
-				const auto renderTime        = _renderTime.Get();
+				const auto renderTime        = _tracer->GetElapsedTime();
 				const auto renderTimeSeconds = renderTime.AsSeconds<float>();
 				std::string renderTimeStr;
 				if (renderTimeSeconds > 10.0f) {
@@ -435,6 +409,8 @@ void Rake::RenderWorld() {
 	const bool tracerRunning = _tracer->IsRunning();
 
 	if (ImGui::Begin("World")) {
+		if (tracerRunning) { ImGui::BeginDisabled(); }
+
 		{
 			std::vector<const char*> worldNames;
 			for (const auto& w : _worlds) { worldNames.push_back(w->Name.c_str()); }
@@ -444,8 +420,6 @@ void Rake::RenderWorld() {
 			}
 		}
 		ImGui::Separator();
-
-		if (tracerRunning) { ImGui::BeginDisabled(); }
 
 		glm::vec3 camPos = world->CameraPos;
 		if (ImGui::DragFloat3("Camera Position", glm::value_ptr(camPos), 0.1f, 0.0f, 0.0f, "%.2f")) {

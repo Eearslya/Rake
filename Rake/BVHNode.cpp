@@ -40,10 +40,8 @@ BVHNode::BVHNode(const std::vector<std::shared_ptr<IHittable>>& srcObjects, size
 	if (objectSpan == 0) { throw std::runtime_error("Cannot construct a BVH with 0 objects!"); }
 
 	if (objectSpan == 1) {
-		Log::Info("BVHNode", "Constructing a BVH of 1 node.");
 		_left = _right = objects[start];
 	} else if (objectSpan == 2) {
-		Log::Info("BVHNode", "Constructing a BVH of 2 nodes.");
 		if (comparator(objects[start], objects[start + 1])) {
 			_left  = objects[start];
 			_right = objects[start + 1];
@@ -52,7 +50,6 @@ BVHNode::BVHNode(const std::vector<std::shared_ptr<IHittable>>& srcObjects, size
 			_right = objects[start];
 		}
 	} else {
-		Log::Info("BVHNode", "Constructing a BVH of {} nodes ({}-{}).", objectSpan, start, end);
 		std::sort(objects.begin() + start, objects.begin() + end, comparator);
 
 		const auto mid = start + objectSpan / 2;

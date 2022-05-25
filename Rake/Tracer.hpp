@@ -1,95 +1,59 @@
 #pragma once
 
-#include <rigtorp/SPSCQueue.h>
-
+#include <Luna/Utility/Time.hpp>
+#include <atomic>
+#include <condition_variable>
+#include <glm/glm.hpp>
 #include <memory>
+#include <mutex>
+#include <queue>
 #include <thread>
+#include <vector>
 
 #include "Camera.hpp"
 #include "DataTypes.hpp"
-#include "Ray.hpp"
-#include "RenderMessages.hpp"
 
-struct World;
-
-struct RenderContext {
-	RenderContext() = default;
-	RenderContext(const RenderRequest& request);
-
-	bool IsComplete() const;
-
-	Camera Cam;
-	unsigned int CurrentSample;
-	std::vector<Color> Pixels;
-	uint64_t Raycasts;
-	RenderRequest Request;
-	unsigned int SampleCount;
-	std::shared_ptr<World> World;
-};
-
-struct SubRenderRequest {
-	SubRenderRequest(RenderContext& context) : Context(context) {}
-
-	RenderContext& Context;
-	uint32_t MinY = 0;
-	uint32_t MaxY = 0;
-};
-
-struct SubRenderComplete {
-	uint64_t Raycasts;
-};
-
-class RenderThread {
- public:
-	RenderThread();
-	~RenderThread() noexcept;
-
-	bool IsRunning() const {
-		return _rendering;
-	}
-	void SetThreadID(uint32_t threadID) {
-		_threadID = threadID;
-	}
-
-	rigtorp::SPSCQueue<RenderCancel> Cancels;
-	rigtorp::SPSCQueue<SubRenderRequest> Requests;
-	rigtorp::SPSCQueue<RenderResult> Results;
-
- private:
-	void RenderWork();
-
-	Color CastRay(const Ray& ray, const World& world, uint64_t& raycasts, uint32_t depth);
-
-	std::atomic_bool _rendering = false;
-	std::atomic_bool _shutdown  = false;
-	std::thread _thread;
-	uint32_t _threadID;
-};
+class World;
 
 class Tracer {
  public:
 	Tracer();
 	~Tracer() noexcept;
 
+	Luna::Utility::Time GetElapsedTime() const {
+		return _renderTime.Get();
+	}
 	bool IsRunning() const {
 		return _rendering;
 	}
 
-	rigtorp::SPSCQueue<RenderCancel> Cancels;
-	rigtorp::SPSCQueue<RenderComplete> Completes;
-	rigtorp::SPSCQueue<RenderRequest> Requests;
-	rigtorp::SPSCQueue<RenderResult> Results;
-	rigtorp::SPSCQueue<RenderStatus> Status;
+	bool StartTrace(const glm::uvec2& imageSize, uint32_t samplesPerPixel, const std::shared_ptr<World>& world);
+	bool CancelTrace();
+	void Update();
+	bool UpdatePixels(std::vector<Color>& pixels);
 
  private:
-	void DispatchThread();
+	void RenderThread(int threadID);
 
-	RenderContext _activeContext;
+	static Color CastRay(const Ray& ray, const World& world, uint32_t depth);
+
+	glm::uvec2 _imageSize = glm::uvec2(0);
+	std::vector<Color> _pixels;
+	std::vector<Color> _avgPixels;
 	std::atomic_bool _rendering = false;
-	std::atomic_bool _shutdown  = false;
-	std::thread _dispatchThread;
-	std::vector<RenderThread> _renderThreads;
-	std::vector<unsigned int> _samplesDone;
-	unsigned int _workingRenderThreads = 0;
-	uint64_t _totalRaycasts            = 0;
+	std::atomic_bool _running   = false;
+	std::vector<std::thread> _renderThreads;
+	uint32_t _samplesPerPixel = 0;
+	Camera _camera;
+	std::shared_ptr<World> _world;
+
+	std::atomic_uint64_t _completedSamples;
+	uint32_t _taskGroupCount    = 0;
+	uint64_t _neededSamples     = 0;
+	uint64_t _lastUpdatedSample = 0;
+	std::queue<uint64_t> _tasks;
+	std::mutex _tasksMutex;
+	std::condition_variable _tasksCondition;
+
+	Luna::Utility::Stopwatch _renderTime;
 };
