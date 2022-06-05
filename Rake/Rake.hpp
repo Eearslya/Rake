@@ -63,6 +63,7 @@ class Rake : public Luna::App {
 	std::thread _exportThread;
 	std::atomic_bool _exporting = false;
 	Luna::Utility::Stopwatch _exportTimer;
+	uint32_t _lastExport = 0;
 	uint32_t _autoExport = 100;
 
 	std::vector<uint32_t> _threadStatus;

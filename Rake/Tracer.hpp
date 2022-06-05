@@ -20,8 +20,16 @@ class Tracer {
 	Tracer();
 	~Tracer() noexcept;
 
+	uint32_t GetCompletedSamples() const {
+		if (_taskGroupCount == 0) { return 0; }
+
+		return _completedSamples / _taskGroupCount;
+	}
 	Luna::Utility::Time GetElapsedTime() const {
 		return _renderTime.Get();
+	}
+	uint64_t GetRaycastCount() const {
+		return _totalRaycasts;
 	}
 	bool IsRunning() const {
 		return _rendering;
@@ -35,7 +43,12 @@ class Tracer {
  private:
 	void RenderThread(int threadID);
 
-	static Color CastRay(const Ray& ray, const World& world, uint32_t depth);
+	static Color Sample(const glm::uvec2& coords,
+	                    const glm::uvec2& imageSize,
+	                    const Camera& camera,
+	                    const World& world,
+	                    uint64_t& raycasts);
+	static Color CastRay(const Ray& ray, const World& world, uint64_t& raycasts, uint32_t depth);
 
 	glm::uvec2 _imageSize = glm::uvec2(0);
 	std::vector<Color> _pixels;
@@ -48,6 +61,7 @@ class Tracer {
 	std::shared_ptr<World> _world;
 
 	std::atomic_uint64_t _completedSamples;
+	std::atomic_uint64_t _totalRaycasts;
 	uint32_t _taskGroupCount    = 0;
 	uint64_t _neededSamples     = 0;
 	uint64_t _lastUpdatedSample = 0;

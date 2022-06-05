@@ -18,6 +18,7 @@
 #include "Materials/GradientSkyMaterial.hpp"
 #include "Materials/LambertianMaterial.hpp"
 #include "Materials/MetalMaterial.hpp"
+#include "Materials/SolidSkyMaterial.hpp"
 #include "Plane.hpp"
 #include "Random.hpp"
 #include "RenderMessages.hpp"
@@ -67,22 +68,24 @@ void Rake::Start() {
 	}
 
 	{
-		auto& world        = CreateWorld("Raytracing In One Weekend");
-		world.Sky          = std::make_shared<GradientSkyMaterial>(Color(1.0) * 0.2f, Color(0.5, 0.7, 1.0) * 0.2f, 0.5);
-		world.CameraPos    = Point3(13.0, 2.0, 5.0);
-		world.CameraTarget = Point3(0.0, 0.0, 0.0);
+		auto& world = CreateWorld("Raytracing In One Weekend");
+		// world.Sky          = std::make_shared<GradientSkyMaterial>(Color(1.0) * 0.2f, Color(0.5, 0.7, 1.0) * 0.2f, 0.5);
+		world.Sky = std::make_shared<SolidSkyMaterial>(std::make_shared<ImageTexture>("Assets/Textures/TokyoBigSight.hdr"));
+		world.CameraPos           = Point3(13.0, 2.0, 5.0);
+		world.CameraTarget        = Point3(0.0, 0.0, 0.0);
 		world.CameraFocusDistance = 12.0;
 		world.CameraAperture      = 0.1;
 		world.VerticalFOV         = 20;
 
-		auto light   = std::make_shared<DiffuseLightMaterial>(Color(40.0));
-		auto checker = std::make_shared<CheckerTexture>(Color(0.2), Color(0.36, 0.0, 0.63), glm::vec2(Pi));
-		auto earth   = std::make_shared<ImageTexture>("Assets/Textures/Earth.jpg");
-		auto ground  = std::make_shared<LambertianMaterial>(checker);
-		auto center  = std::make_shared<DielectricMaterial>(1.5);
-		auto left    = std::make_shared<LambertianMaterial>(earth);
-		auto right   = std::make_shared<MetalMaterial>(Color(0.7, 0.6, 0.5), 0.0);
-		world.Objects.Add<XYRectangle>(Point2(2, 2), Point2(5, 5), 5, light);
+		auto sun          = std::make_shared<DiffuseLightMaterial>(Color(0.5, 0.9, 0.9) * 30.0f);
+		auto checker      = std::make_shared<CheckerTexture>(Color(0.2), Color(0.36, 0.0, 0.63), glm::vec2(Pi));
+		auto earth        = std::make_shared<ImageTexture>("Assets/Textures/Earth.jpg");
+		auto ground       = std::make_shared<LambertianMaterial>(checker);
+		auto center       = std::make_shared<DielectricMaterial>(1.5);
+		auto left         = std::make_shared<LambertianMaterial>(earth);
+		auto right        = std::make_shared<MetalMaterial>(Color(0.7, 0.6, 0.5), 0.0);
+		const auto sunPos = RandomInHemisphere(Vector3(0, 1, 0)) * 250.0;
+		world.Objects.Add<Sphere>(sunPos, 50, sun);
 		world.Objects.Add<XZPlane>(0.0, ground);
 		world.Objects.Add<Sphere>(Point3(0, 1, 0), 1, center);
 		world.Objects.Add<Sphere>(Point3(-4, 1, 0), 1, left);
@@ -95,14 +98,17 @@ void Rake::Start() {
 
 				if (glm::length(center - Point3(4, 0.2, 0)) > 0.9) {
 					std::shared_ptr<IMaterial> material;
-					if (randomMat < 0.4) {
+					if (randomMat < 0.3) {
 						const auto albedo = RandomColor() * RandomColor();
 						material          = std::make_shared<LambertianMaterial>(albedo);
-					} else if (randomMat < 0.8) {
+					} else if (randomMat < 0.7) {
 						const auto albedoA = RandomColor() * RandomColor();
 						const auto albedoB = RandomColor() * RandomColor();
 						material           = std::make_shared<LambertianMaterial>(
               std::make_shared<CheckerTexture>(albedoA, albedoB, glm::vec2(30.0f, 15.0f)));
+					} else if (randomMat < 0.8) {
+						const auto albedo = RandomColor() * RandomColor();
+						material          = std::make_shared<DiffuseLightMaterial>(albedo * 5.0f);
 					} else if (randomMat < 0.95) {
 						const auto albedo    = RandomColor(0.5, 1.0);
 						const auto roughness = RandomDouble(0.0, 0.5);
@@ -138,8 +144,6 @@ void Rake::Render() {
 
 	const bool renderUpdated = _tracer->UpdatePixels(_pixels);
 	if (renderUpdated) {
-		Log::Info("Rake", "Got updated image.");
-
 		for (auto& pixel : _pixels) {
 			pixel.r = glm::sqrt(pixel.r);
 			pixel.g = glm::sqrt(pixel.g);
@@ -147,6 +151,17 @@ void Rake::Render() {
 		}
 		Color* pixelData = reinterpret_cast<Color*>(_copyBuffer->Map());
 		memcpy(pixelData, _pixels.data(), _copyBuffer->GetCreateInfo().Size);
+
+		const auto samples = _tracer->GetCompletedSamples();
+		auto nextExport    = _lastExport + _autoExport;
+		nextExport -= nextExport % _autoExport;
+		nextExport    = _lastExport == 0 ? 1 : nextExport;
+		bool doExport = samples >= nextExport && samples > _lastExport;
+		if (doExport) {
+			_samplesCompleted = nextExport;
+			_lastExport       = nextExport;
+			Export();
+		}
 
 		cmdBuf->ImageBarrier(*_renderImage,
 		                     vk::ImageLayout::eUndefined,
@@ -225,6 +240,7 @@ void Rake::RequestTrace(bool preview) {
 		_samplesCompleted = 0;
 		_renderTime.Start();
 		_threadStatus.clear();
+		_lastExport = 0;
 	} else {
 		Log::Warning("Rake", "Failed to request raytrace task!");
 	}
@@ -317,11 +333,12 @@ void Rake::RenderControls() {
 				}
 				ImGui::Text("%s", renderTimeStr.c_str());
 
-				const std::string progressStr = fmt::format("Progress: {} / {}", _samplesCompleted, _samplesRequested);
+				const std::string progressStr =
+					fmt::format("Progress: {} / {}", _tracer->GetCompletedSamples(), _samplesRequested);
 				ImGui::Text("%s", progressStr.c_str());
 
 				const uint64_t raysPerSecond =
-					renderTimeSeconds > 0.0f ? std::floor(float(_raysCompleted) / renderTimeSeconds) : 0ull;
+					renderTimeSeconds > 0.0f ? std::floor(float(_tracer->GetRaycastCount()) / renderTimeSeconds) : 0ull;
 				const std::string rpsStr = fmt::format(std::locale("en_US.UTF-8"), "RPS: {:L}", raysPerSecond);
 				ImGui::Text("%s", rpsStr.c_str());
 

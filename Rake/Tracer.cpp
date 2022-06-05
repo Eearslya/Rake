@@ -2,6 +2,7 @@
 
 #include <Luna/Utility/Log.hpp>
 #include <Luna/Utility/Time.hpp>
+#include <Tracy.hpp>
 
 #include "IMaterial.hpp"
 #include "ISkyMaterial.hpp"
@@ -59,6 +60,7 @@ bool Tracer::StartTrace(const glm::uvec2& imageSize, uint32_t samplesPerPixel, c
                    aspectRatio,
                    world->CameraAperture,
                    world->CameraFocusDistance);
+	_totalRaycasts           = 0;
 	_imageSize               = imageSize;
 	_rendering               = true;
 	_samplesPerPixel         = samplesPerPixel;
@@ -107,11 +109,11 @@ bool Tracer::CancelTrace() {
 	if (!_rendering) { return true; }
 
 	Log::Info("Tracer", "Cancelling raytrace task.");
-
-	_imageSize       = glm::uvec2(0);
-	_rendering       = false;
-	_samplesPerPixel = 0;
-	_world.reset();
+	{
+		std::lock_guard<std::mutex> lock(_tasksMutex);
+		while (!_tasks.empty()) { _tasks.pop(); }
+		_rendering = false;
+	}
 
 	return true;
 }
@@ -129,8 +131,7 @@ void Tracer::Update() {
 }
 
 bool Tracer::UpdatePixels(std::vector<Color>& pixels) {
-	if (_completedSamples == _lastUpdatedSample) { return false; }
-	bool update = (_lastUpdatedSample + 50) < _completedSamples;
+	bool update = (_lastUpdatedSample + 100) < _completedSamples;
 	update |= _completedSamples == _neededSamples && _lastUpdatedSample != _completedSamples;
 
 	if (update) {
@@ -159,23 +160,24 @@ void Tracer::RenderThread(int threadID) {
 		uint32_t sample;
 		DeconstructTask(task, yMin, yMax, sample);
 		const float avgFactor = 1.0f / (static_cast<float>(sample) + 1.0f);
+		uint64_t raycasts     = 0;
 
-		const uint32_t width  = _imageSize.x;
-		const uint32_t height = _imageSize.y;
-		for (uint32_t y = yMin; y < yMax; ++y) {
-			for (uint32_t x = 0; x < width; ++x) {
-				const auto s         = (double(x) + RandomDouble()) / (width - 1);
-				const auto t         = 1.0 - ((double(y) + RandomDouble()) / (height - 1));
-				const Ray ray        = _camera.GetRay(s, t);
-				const Color rayColor = CastRay(ray, *_world, 0);
+		{
+			const uint32_t width  = _imageSize.x;
+			const uint32_t height = _imageSize.y;
+			for (uint32_t y = yMin; y < yMax; ++y) {
+				for (uint32_t x = 0; x < width; ++x) {
+					const Color rayColor = Sample(glm::uvec2(x, y), _imageSize, _camera, *_world, raycasts);
 
-				const auto offset = (y * width) + x;
-				_pixels[offset] += rayColor;
-				_avgPixels[offset] = _pixels[offset] * avgFactor;
+					const auto offset = (y * width) + x;
+					_pixels[offset] += rayColor;
+					_avgPixels[offset] = _pixels[offset] * avgFactor;
+				}
 			}
 		}
 
 		_completedSamples.fetch_add(1, std::memory_order_relaxed);
+		_totalRaycasts.fetch_add(raycasts, std::memory_order_acq_rel);
 		if (_rendering && ++sample < _samplesPerPixel) {
 			std::unique_lock<std::mutex> lock(_tasksMutex);
 			const auto task = ConstructTask(yMin, yMax, sample);
@@ -185,10 +187,20 @@ void Tracer::RenderThread(int threadID) {
 	}
 }
 
-Color Tracer::CastRay(const Ray& ray, const World& world, uint32_t depth) {
+Color Tracer::Sample(
+	const glm::uvec2& coords, const glm::uvec2& imageSize, const Camera& camera, const World& world, uint64_t& raycasts) {
+	const auto s  = (double(coords.x) + RandomDouble()) / (imageSize.x - 1);
+	const auto t  = 1.0 - ((double(coords.y) + RandomDouble()) / (imageSize.y - 1));
+	const Ray ray = camera.GetRay(s, t);
+
+	return CastRay(ray, world, raycasts, 0);
+}
+
+Color Tracer::CastRay(const Ray& ray, const World& world, uint64_t& raycasts, uint32_t depth) {
 	constexpr static uint32_t MaxDepth = 50;
 
 	if (depth >= MaxDepth) { return Color(0.0); }
+	++raycasts;
 
 	HitRecord hit;
 	if (world.BVH->Hit(ray, 0.001, Infinity, hit)) {
@@ -196,7 +208,7 @@ Color Tracer::CastRay(const Ray& ray, const World& world, uint32_t depth) {
 		Ray scattered;
 		const Color emission = hit.Material->Emit(hit.UV, hit.Point);
 		if (hit.Material->Scatter(ray, hit, attenuation, scattered)) {
-			return emission + attenuation * CastRay(scattered, world, depth + 1);
+			return emission + attenuation * CastRay(scattered, world, raycasts, depth + 1);
 		} else {
 			return emission;
 		}

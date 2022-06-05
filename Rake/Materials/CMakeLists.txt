@@ -3,4 +3,5 @@ target_sources(Rake PRIVATE
 	DiffuseLightMaterial.cpp
 	GradientSkyMaterial.cpp
 	LambertianMaterial.cpp
-	MetalMaterial.cpp)
+	MetalMaterial.cpp
+	SolidSkyMaterial.cpp)
